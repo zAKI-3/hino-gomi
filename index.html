@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ごみ分別">
+<meta name="theme-color" content="#2e7d4f">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>日野市ごみ分別 早見</title>
+<style>
+:root{--g:#2e7d4f;--bg:#f4f6f3;--card:#fff;--mut:#667;--line:#e2e6e0}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"Hiragino Sans",sans-serif;background:var(--bg);color:#222;padding:env(safe-area-inset-top) 0 40px}
+header{background:var(--g);color:#fff;padding:12px 14px 14px}
+header h1{font-size:15px;margin:0 0 8px;font-weight:600;opacity:.9}
+.days{display:flex;gap:8px}
+.day{flex:1;background:rgba(255,255,255,.14);border-radius:10px;padding:8px 10px}
+.day b{display:block;font-size:12px;opacity:.85;font-weight:500}
+.day span{font-size:16px;font-weight:700;line-height:1.35}
+.wrap{padding:12px}
+#q{width:100%;font-size:17px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.btn{border:0;border-radius:12px;padding:12px 4px;font-size:14px;font-weight:600;color:#fff;line-height:1.3}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:16px;padding:6px 10px;font-size:13px}
+h2{font-size:15px;margin:18px 2px 8px}
+.list .it{background:var(--card);border-radius:10px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.it .nm{font-size:15px}
+.tag{font-size:12px;font-weight:700;color:#fff;border-radius:6px;padding:3px 7px;white-space:nowrap}
+.cm{font-size:13px;color:var(--mut);margin-top:4px;white-space:pre-wrap}
+.panel{background:#fff;border-radius:12px;padding:12px 14px;margin-top:10px;font-size:14px;line-height:1.6;white-space:pre-wrap}
+.next{font-weight:700;color:var(--g)}
+.note{font-size:12px;color:var(--mut);margin-top:24px;line-height:1.6}
+.hide{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>日野市ごみ分別 早見（万願寺地区）</h1>
+  <div class="days"><div class="day"><b id="l0">今日</b><span id="d0"></span></div><div class="day"><b id="l1">明日</b><span id="d1"></span></div></div>
+</header>
+<div class="wrap">
+  <input id="q" type="search" placeholder="品名で検索（例：厚紙、電池、フライパン）" autocomplete="off">
+  <div class="grid" id="grid"></div>
+  <div class="chips" id="chips"></div>
+  <div id="out"></div>
+  <div class="note">データ：日野市ごみ分別辞典（849品目）・ごみ・資源分別カレンダー令和8年版（上田・宮・万願寺・石田・新井）。収集日は2026年12月まで確認済み。1月以降は令和9年版カレンダーで要確認。迷ったら ごみゼロ推進課 042-581-0444</div>
+</div>
+<script>
+const GROUPS=[
+ {k:"可燃",c:"#3f8f4f",t:["1","19","21"]},
+ {k:"不燃",c:"#d9822b",t:["2"]},
+ {k:"プラ",c:"#2b78c5",t:["24"]},
+ {k:"紙・段ボール",c:"#8a6d3b",t:["6","7","8","9"]},
+ {k:"びん・かん・ペット",c:"#5b6fa8",t:["11","12","13"]},
+ {k:"有害",c:"#c0392b",t:["3"]},
+ {k:"小型家電・金属",c:"#607d8b",t:["4","5"]},
+ {k:"古着・古布",c:"#9c5aa8",t:["10"]},
+ {k:"粗大・出せない",c:"#555",t:["15","16","17","18","20","22","23","25"]},
+];
+const COLOR={};GROUPS.forEach(g=>g.t.forEach(t=>COLOR[t]=g.c));
+const QUICK=["厚紙","ティッシュの箱","ピザの箱","紙コップ","アルミホイル","電池","スプレー缶","フライパン","傘","レシート","ハンガー","ペットボトルのキャップ"];
+// 収集日（令和8年版 万願寺地区カレンダーから。2026-11 を基準に周期で計算）
+const SCHED={"可燃":"可燃","不燃":"不燃","プラ":"プラ","有害":"有害","段ボール":"段ボール","雑誌":"雑誌・雑紙","紙パック":"紙パック","古布":"古着・古布","かん":"かん","びん":"びん","新聞":"新聞","ペット":"ペットボトル","金属":"小型家電・金属"};
+const TYPE2S={"1":"可燃","19":"可燃","21":"可燃","2":"不燃","24":"プラ","3":"有害","4":"金属","5":"金属","6":"新聞","7":"雑誌","8":"段ボール","9":"紙パック","10":"古布","11":"かん","12":"びん","13":"ペット"};
+const DAY=864e5, base=Date.UTC(2026,10,2); // 2026-11-02(月)
+function cols(dt){ // dt: Date (local)
+  const u=Date.UTC(dt.getFullYear(),dt.getMonth(),dt.getDate());
+  const m=dt.getMonth()+1,d=dt.getDate();
+  if((m==12&&d>=29)||(m==1&&d<=3)) return [];
+  const w=dt.getDay(), wk=Math.floor((u-base)/DAY/7), even=((wk%2)+2)%2==0, c4=((wk%4)+4)%4;
+  const r=[];
+  if(w==1||w==4) r.push("可燃");
+  if(w==1&&even) r.push("段ボール");
+  if(w==2&&even) r.push("雑誌");
+  if(w==3){ r.push("プラ","有害"); r.push(...[["びん","金属"],["ペット"],["びん","新聞"],["不燃"]][c4]); }
+  if(w==4&&even) r.push("紙パック","古布");
+  if(w==5&&even) r.push("かん");
+  return r;
+}
+const LIMIT=new Date(2026,11,31);
+function fmt(dt){return (dt.getMonth()+1)+"/"+dt.getDate()+"("+"日月火水木金土"[dt.getDay()]+")"}
+function nextDate(key){const t=new Date();t.setHours(0,0,0,0);for(let i=0;i<60;i++){const d=new Date(t.getTime()+i*DAY);if(cols(d).includes(key))return (i==0?"今日 ":i==1?"明日 ":"")+fmt(d)+(d>LIMIT?"（来年版で要確認）":"")}return ""}
+function head(){const t=new Date();t.setHours(0,0,0,0);[0,1].forEach(i=>{const d=new Date(t.getTime()+i*DAY);const c=cols(d).map(k=>SCHED[k]);document.getElementById("l"+i).textContent=(i?"明日 ":"今日 ")+fmt(d);document.getElementById("d"+i).textContent=(c.length?c.join("・"):"収集なし")+(d>LIMIT?"（要確認）":"")})}
+let DATA;
+const kana=s=>s.normalize("NFKC").replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+96)).toLowerCase();
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function itemHTML(i){const [nm,,t,cm]=i,ty=DATA.T[t];const nx=TYPE2S[t]?nextDate(TYPE2S[t]):"";
+ return `<div class="it" onclick="this.querySelector('.cm')?.classList.toggle('hide')"><div><div class="nm">${esc(nm)}</div>${(cm||nx)?`<div class="cm hide">${nx?`<span class="next">次の回収：${nx}</span>\n`:""}${esc(cm||"")}</div>`:""}</div><span class="tag" style="background:${COLOR[t]||"#555"}">${esc(ty?ty.n:"?")}</span></div>`}
+function search(q){const k=kana(q.trim());if(!k){document.getElementById("out").innerHTML="";return}
+ const hits=DATA.I.filter(i=>kana(i[0]).includes(k)||kana(i[1]).includes(k)).slice(0,80);
+ document.getElementById("out").innerHTML=`<h2>「${esc(q)}」${hits.length}件</h2><div class="list">${hits.map(itemHTML).join("")||'<div class="panel">見つかりません。言い方を変えて探してください（例：箱、紙、缶）。</div>'}</div>`}
+function showGroup(g){document.getElementById("q").value="";
+ let h="";g.t.forEach(t=>{const ty=DATA.T[t];if(!ty)return;const list=DATA.I.filter(i=>i[2]==t).sort((a,b)=>a[1].localeCompare(b[1],"ja"));
+  const nx=TYPE2S[t]?nextDate(TYPE2S[t]):"";
+  h+=`<h2>${esc(ty.n)}${nx?` <span class="next">次：${nx}</span>`:""}</h2><div class="panel">${ty.ex?"<b>主なもの</b>\n"+esc(ty.ex)+"\n\n":""}<b>出し方</b>\n${esc(ty.how)}</div><h2>品目（${list.length}）</h2><div class="list">${list.map(itemHTML).join("")}</div>`});
+ document.getElementById("out").innerHTML=h;document.getElementById("out").scrollIntoView({behavior:"smooth"})}
+fetch("data.json").then(r=>r.json()).then(d=>{DATA=d;
+ DATA.I.push(["厚紙・紙箱（段ボール以外。お菓子の箱・商品の台紙など）","アツガミ カミバコ ボールガミ ダイシ","7","断面が波形でなければ「雑誌・雑紙類」。ひもで縛るか紙袋に入れて出す。\n表面がツルツルで水をはじく紙（ビニールコート紙）、ろう加工紙、金紙・銀紙、汚れた紙は可燃ごみ。"]);
+ document.getElementById("grid").innerHTML=GROUPS.map((g,i)=>`<button class="btn" style="background:${g.c}" onclick="showGroup(GROUPS[${i}])">${g.k}</button>`).join("");
+ document.getElementById("chips").innerHTML=QUICK.map(q=>`<button class="chip" onclick="q.value='${q}';search('${q}')">${q}</button>`).join("");
+});
+document.getElementById("q").addEventListener("input",e=>search(e.target.value));
+head();
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
